@@ -21,7 +21,7 @@ OpenAPI/Docs:
 - OpenAPI JSON:     http://localhost:5001/openapi.json
 """
 from typing import List, Optional, Any, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import sqlite3
 
@@ -148,7 +148,7 @@ def health() -> Dict[str, Any]:
     return {
         "status": "ok",
         "db_file": DB_FILE,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -207,7 +207,7 @@ def create_task(payload: TaskCreate) -> TaskOut:
     Returns:
         TaskOut: The created task.
     """
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     conn = get_connection()
     try:
         cur = conn.execute(
@@ -261,7 +261,7 @@ def replace_task(
         if not existing:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        now = datetime.utcnow().isoformat(timespec="seconds")
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         conn.execute(
             """
             UPDATE tasks

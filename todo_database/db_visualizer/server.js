@@ -1,4 +1,19 @@
-const express = require('express');
+let express;
+try {
+  // Standard express require path
+  express = require('express');
+} catch (e) {
+  // Fallback: try requiring main export of express package if lib folder is missing
+  // Some environments may install express without unpacking lib directory properly.
+  // In such cases, attempt to load from package main entry.
+  const path = require('path');
+  const fs = require('fs');
+  const pkgPath = require.resolve('express/package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const mainFile = path.resolve(path.dirname(pkgPath), pkg.main || 'index.js');
+  // This will throw if truly broken; in that case error surfaces as before.
+  express = require(mainFile);
+}
 const path = require('path');
 const fs = require('fs');
 

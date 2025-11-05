@@ -12,7 +12,7 @@ Usage:
 
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 DB_NAME = "myapp.db"
 
@@ -62,7 +62,7 @@ def seed_sample_tasks(conn: sqlite3.Connection) -> None:
     if count and count > 0:
         return
 
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     # Insert 2 sample tasks
     conn.execute(
         """
