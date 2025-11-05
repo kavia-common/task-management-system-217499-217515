@@ -6,7 +6,10 @@
 - CORS: Allows http://localhost:3000 (frontend dev).
 
 Manual curl checks:
-- Health:
+- Health (readiness):
+  curl -i -s http://localhost:5001/healthz
+
+- Health (detailed):
   curl -s http://localhost:5001/api/health | jq .
 
 - List:

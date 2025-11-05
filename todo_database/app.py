@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 import os
 import sqlite3
 
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException, Path, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -65,6 +65,15 @@ def ensure_tasks_table() -> None:
         conn.commit()
     finally:
         conn.close()
+
+if __name__ == "__main__":
+    # Allow running the API directly with `python app.py`
+    import uvicorn
+
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "5001"))
+    # Note: reload is not enabled here; use uvicorn CLI with --reload for dev
+    uvicorn.run("app:app", host=host, port=port, workers=1)
 
 
 # Pydantic models for request/response
@@ -121,6 +130,17 @@ app.add_middleware(
 def on_startup() -> None:
     """Create schema at startup if it doesn't exist."""
     ensure_tasks_table()
+
+# PUBLIC_INTERFACE
+@app.get("/healthz", tags=["health"], summary="Readiness probe", description="Lightweight readiness probe without database checks. Returns 200 OK.")
+def healthz() -> Response:
+    """
+    Simple readiness endpoint that always returns 200 OK.
+
+    Returns:
+        fastapi.Response: Empty body with 200 status for readiness checks.
+    """
+    return Response(status_code=200)
 
 
 # PUBLIC_INTERFACE
