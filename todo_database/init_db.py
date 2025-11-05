@@ -1,132 +1,169 @@
 #!/usr/bin/env python3
-"""Initialize SQLite database for todo_database"""
+"""
+Initialize SQLite database for todo_database.
 
-import sqlite3
+This script ensures the required schema exists for the tasks table and
+(optionally) seeds example data if the table is empty. It preserves compatibility
+with existing utilities by using the same myapp.db path in this folder.
+
+Usage:
+    python init_db.py
+"""
+
 import os
+import sqlite3
+from datetime import datetime
 
 DB_NAME = "myapp.db"
-DB_USER = "kaviasqlite"  # Not used for SQLite, but kept for consistency
-DB_PASSWORD = "kaviadefaultpassword"  # Not used for SQLite, but kept for consistency
-DB_PORT = "5000"  # Not used for SQLite, but kept for consistency
 
-print("Starting SQLite setup...")
+def get_db_path() -> str:
+    """Return absolute path to the SQLite database file."""
+    return os.path.join(os.path.dirname(__file__), DB_NAME)
 
-# Check if database already exists
-db_exists = os.path.exists(DB_NAME)
-if db_exists:
-    print(f"SQLite database already exists at {DB_NAME}")
-    # Verify it's accessible
+def get_connection() -> sqlite3.Connection:
+    """Create a SQLite connection and ensure foreign keys are enforced."""
+    conn = sqlite3.connect(get_db_path())
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+def ensure_tasks_table(conn: sqlite3.Connection) -> None:
+    """
+    Create the tasks table if it does not already exist.
+
+    Required schema:
+      - id INTEGER PRIMARY KEY AUTOINCREMENT
+      - title TEXT NOT NULL
+      - description TEXT
+      - completed INTEGER DEFAULT 0
+      - created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      - updated_at TIMESTAMP
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            completed INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP
+        )
+        """
+    )
+    conn.commit()
+
+def seed_sample_tasks(conn: sqlite3.Connection) -> None:
+    """
+    Seed 1-2 sample tasks if the table is empty.
+    """
+    cur = conn.execute("SELECT COUNT(*) AS c FROM tasks")
+    count = cur.fetchone()["c"]
+    if count and count > 0:
+        return
+
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    # Insert 2 sample tasks
+    conn.execute(
+        """
+        INSERT INTO tasks (title, description, completed, created_at, updated_at)
+        VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+        """,
+        ("Welcome to your To-Do List", "Try creating, editing, and completing tasks.", 0, now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO tasks (title, description, completed, created_at, updated_at)
+        VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+        """,
+        ("Sample completed task", "This one is already done.", 1, now, now),
+    )
+    conn.commit()
+
+def write_connection_info():
+    """
+    Write connection details to db_connection.txt for convenience (maintains compatibility with utilities).
+    """
+    current_dir = os.path.dirname(__file__)
+    db_path_abs = get_db_path()
+    connection_string = f"sqlite:///{db_path_abs}"
     try:
-        conn = sqlite3.connect(DB_NAME)
-        conn.execute("SELECT 1")
-        conn.close()
-        print("Database is accessible and working.")
+        with open(os.path.join(current_dir, "db_connection.txt"), "w") as f:
+            f.write("# SQLite connection methods:\n")
+            f.write(f"# Python: sqlite3.connect('{DB_NAME}')\n")
+            f.write(f"# Connection string: {connection_string}\n")
+            f.write(f"# File path: {db_path_abs}\n")
     except Exception as e:
-        print(f"Warning: Database exists but may be corrupted: {e}")
-else:
-    print("Creating new SQLite database...")
+        print(f"Warning: Could not save connection info: {e}")
 
-# Create database with sample tables
-conn = sqlite3.connect(DB_NAME)
-cursor = conn.cursor()
+def write_db_visualizer_env():
+    """
+    Ensure db_visualizer/sqlite.env contains the SQLITE_DB path for the bundled viewer.
+    """
+    db_path_abs = get_db_path()
+    visualizer_dir = os.path.join(os.path.dirname(__file__), "db_visualizer")
+    try:
+        os.makedirs(visualizer_dir, exist_ok=True)
+        with open(os.path.join(visualizer_dir, "sqlite.env"), "w") as f:
+            f.write(f'export SQLITE_DB="{db_path_abs}"\n')
+    except Exception as e:
+        print(f"Warning: Could not save environment variables: {e}")
 
-# Create initial schema
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS app_info (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        key TEXT UNIQUE NOT NULL,
-        value TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
+def main() -> None:
+    print("Starting SQLite setup...")
+    db_path = get_db_path()
+    db_exists = os.path.exists(db_path)
 
-# Create a sample users table as an example
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
+    if db_exists:
+        print(f"SQLite database already exists at {db_path}")
+        try:
+            conn = get_connection()
+            conn.execute("SELECT 1")
+            conn.close()
+            print("Database is accessible and working.")
+        except Exception as e:
+            print(f"Warning: Database exists but may be corrupted: {e}")
+    else:
+        print("Creating new SQLite database...")
 
-# Insert initial data
-cursor.execute("INSERT OR REPLACE INTO app_info (key, value) VALUES (?, ?)", 
-               ("project_name", "todo_database"))
-cursor.execute("INSERT OR REPLACE INTO app_info (key, value) VALUES (?, ?)", 
-               ("version", "0.1.0"))
-cursor.execute("INSERT OR REPLACE INTO app_info (key, value) VALUES (?, ?)", 
-               ("author", "John Doe"))
-cursor.execute("INSERT OR REPLACE INTO app_info (key, value) VALUES (?, ?)", 
-               ("description", ""))
+    conn = get_connection()
+    try:
+        # Ensure required tasks table exists (required by the application)
+        ensure_tasks_table(conn)
 
-conn.commit()
+        # Optionally seed initial sample tasks if table is empty
+        seed_sample_tasks(conn)
 
-# Get database statistics
-cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-table_count = cursor.fetchone()[0]
+        # Provide some quick stats
+        cur = conn.execute("SELECT COUNT(*) AS c FROM tasks")
+        tasks_count = cur.fetchone()["c"]
+    finally:
+        conn.close()
 
-cursor.execute("SELECT COUNT(*) FROM app_info")
-record_count = cursor.fetchone()[0]
+    # Maintain compatibility artifacts
+    write_connection_info()
+    write_db_visualizer_env()
 
-conn.close()
+    # Final output
+    print("\nSQLite setup complete!")
+    print(f"Database: {DB_NAME}")
+    print(f"Location: {db_path}")
+    print("")
+    print("Database statistics:")
+    print(f"  Tasks: {tasks_count}")
 
-# Save connection information to a file
-current_dir = os.getcwd()
-connection_string = f"sqlite:///{current_dir}/{DB_NAME}"
+    # If sqlite3 CLI is available, show how to use it
+    try:
+        import subprocess
+        result = subprocess.run(['which', 'sqlite3'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("")
+            print("SQLite CLI is available. You can also use:")
+            print(f"  sqlite3 {db_path}")
+    except Exception:
+        pass
 
-try:
-    with open("db_connection.txt", "w") as f:
-        f.write(f"# SQLite connection methods:\n")
-        f.write(f"# Python: sqlite3.connect('{DB_NAME}')\n")
-        f.write(f"# Connection string: {connection_string}\n")
-        f.write(f"# File path: {current_dir}/{DB_NAME}\n")
-    print("Connection information saved to db_connection.txt")
-except Exception as e:
-    print(f"Warning: Could not save connection info: {e}")
+    print("\nScript completed successfully.")
 
-# Create environment variables file for Node.js viewer
-db_path = os.path.abspath(DB_NAME)
-
-# Ensure db_visualizer directory exists
-if not os.path.exists("db_visualizer"):
-    os.makedirs("db_visualizer", exist_ok=True)
-    print("Created db_visualizer directory")
-
-try:
-    with open("db_visualizer/sqlite.env", "w") as f:
-        f.write(f"export SQLITE_DB=\"{db_path}\"\n")
-    print(f"Environment variables saved to db_visualizer/sqlite.env")
-except Exception as e:
-    print(f"Warning: Could not save environment variables: {e}")
-
-print("\nSQLite setup complete!")
-print(f"Database: {DB_NAME}")
-print(f"Location: {current_dir}/{DB_NAME}")
-print("")
-
-print("To use with Node.js viewer, run: source db_visualizer/sqlite.env")
-
-print("\nTo connect to the database, use one of the following methods:")
-print(f"1. Python: sqlite3.connect('{DB_NAME}')")
-print(f"2. Connection string: {connection_string}")
-print(f"3. Direct file access: {current_dir}/{DB_NAME}")
-print("")
-
-print("Database statistics:")
-print(f"  Tables: {table_count}")
-print(f"  App info records: {record_count}")
-
-# If sqlite3 CLI is available, show how to use it
-try:
-    import subprocess
-    result = subprocess.run(['which', 'sqlite3'], capture_output=True, text=True)
-    if result.returncode == 0:
-        print("")
-        print("SQLite CLI is available. You can also use:")
-        print(f"  sqlite3 {DB_NAME}")
-except:
-    pass
-
-# Exit successfully
-print("\nScript completed successfully.")
+if __name__ == "__main__":
+    main()
