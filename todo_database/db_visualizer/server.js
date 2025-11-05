@@ -341,6 +341,11 @@ app.get('/api/:db/tables/:table/data', (req, res) =>
   })
 );
 
+app.get('/healthz', (req, res) => {
+  // Minimal readiness probe for the db_visualizer service
+  res.status(200).json({ status: 'ok' });
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
